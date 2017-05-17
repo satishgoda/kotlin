@@ -15,14 +15,13 @@
  */
 package com.google.gwt.dev.js;
 
-import org.jetbrains.kotlin.js.backend.ast.*;
-import org.jetbrains.kotlin.js.backend.ast.JsBooleanLiteral;
-import org.jetbrains.kotlin.js.backend.ast.metadata.HasMetadata;
 import com.google.gwt.dev.js.parserExceptions.JsParserException;
-import com.google.gwt.dev.js.rhino.*;
+import com.google.gwt.dev.js.rhino.Node;
+import com.google.gwt.dev.js.rhino.TokenStream;
 import com.intellij.util.SmartList;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.kotlin.js.backend.ast.*;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -36,8 +35,7 @@ public class JsAstMapper {
     }
 
     private static JsParserException createParserException(String msg, Node offender) {
-        CodePosition position = new CodePosition(offender.getLineno(), 0);
-        return new JsParserException("Parser encountered internal error: " + msg, position);
+        return new JsParserException("Parser encountered internal error: " + msg, offender.getPosition());
     }
 
     private JsNode map(Node node) throws JsParserException {
@@ -246,7 +244,7 @@ public class JsAstMapper {
 
     private JsExpression mapAssignmentVariant(Node asgNode)
             throws JsParserException {
-        switch (asgNode.getIntDatum()) {
+        switch (asgNode.getOperation()) {
             case TokenStream.NOP:
                 return mapBinaryOperation(JsBinaryOperator.ASG, asgNode);
 
@@ -285,7 +283,7 @@ public class JsAstMapper {
 
             default:
                 throw createParserException("Unknown assignment operator variant: "
-                                            + asgNode.getIntDatum(), asgNode);
+                                            + asgNode.getOperation(), asgNode);
         }
     }
 
@@ -426,7 +424,7 @@ public class JsAstMapper {
     }
 
     private JsExpression mapEqualityVariant(Node eqNode) throws JsParserException {
-        switch (eqNode.getIntDatum()) {
+        switch (eqNode.getOperation()) {
             case TokenStream.EQ:
                 return mapBinaryOperation(JsBinaryOperator.EQ, eqNode);
 
@@ -453,17 +451,12 @@ public class JsAstMapper {
 
             default:
                 throw createParserException("Unknown equality operator variant: "
-                                            + eqNode.getIntDatum(), eqNode);
+                                            + eqNode.getOperation(), eqNode);
         }
     }
 
     private JsExpression mapExpression(Node exprNode) throws JsParserException {
         JsNode unknown = map(exprNode);
-
-        if (unknown instanceof HasMetadata) {
-            HasMetadata metadataContainer = (HasMetadata) unknown;
-            metadataContainer.setData("line", exprNode.getLineno());
-        }
 
         if (unknown instanceof JsExpression) {
             return (JsExpression) unknown;
@@ -603,16 +596,8 @@ public class JsAstMapper {
 
         JsExpression toQualifier = mapExpression(from1);
         JsNameRef toNameRef;
-        if (from2 != null) {
-            toNameRef = mapAsPropertyNameRef(from2);
-        }
-        else {
-            // Special properties don't have a second expression.
-            //
-            Object obj = getPropNode.getProp(Node.SPECIAL_PROP_PROP);
-            assert (obj instanceof String);
-            toNameRef = scopeContext.referenceFor((String) obj);
-        }
+        toNameRef = mapAsPropertyNameRef(from2);
+
         toNameRef.setQualifier(toQualifier);
 
         return toNameRef;
@@ -641,14 +626,14 @@ public class JsAstMapper {
 
     private JsExpression mapIncDecFixity(JsUnaryOperator op, Node node)
             throws JsParserException {
-        switch (node.getIntDatum()) {
+        switch (node.getOperation()) {
             case TokenStream.PRE:
                 return mapPrefixOperation(op, node);
             case TokenStream.POST:
                 return mapPostfixOperation(op, node);
             default:
                 throw createParserException(
-                        "Unknown prefix/postfix variant: " + node.getIntDatum(), node);
+                        "Unknown prefix/postfix variant: " + node.getOperation(), node);
         }
     }
 
@@ -753,7 +738,7 @@ public class JsAstMapper {
     }
 
     private static JsExpression mapPrimary(Node node) throws JsParserException {
-        switch (node.getIntDatum()) {
+        switch (node.getOperation()) {
             case TokenStream.THIS:
                 return new JsThisRef();
 
@@ -770,7 +755,7 @@ public class JsAstMapper {
                 return new JsNameRef("undefined");
 
             default:
-                throw createParserException("Unknown primary: " + node.getIntDatum(),
+                throw createParserException("Unknown primary: " + node.getOperation(),
                                             node);
         }
     }
@@ -791,7 +776,7 @@ public class JsAstMapper {
 
     private JsExpression mapRelationalVariant(Node relNode)
             throws JsParserException {
-        switch (relNode.getIntDatum()) {
+        switch (relNode.getOperation()) {
             case TokenStream.LT:
                 return mapBinaryOperation(JsBinaryOperator.LT, relNode);
 
@@ -812,7 +797,7 @@ public class JsAstMapper {
 
             default:
                 throw createParserException("Unknown relational operator variant: "
-                                            + relNode.getIntDatum(), relNode);
+                                            + relNode.getOperation(), relNode);
         }
     }
 
@@ -856,7 +841,7 @@ public class JsAstMapper {
     }
 
     private JsExpression mapShiftVariant(Node shiftNode) throws JsParserException {
-        switch (shiftNode.getIntDatum()) {
+        switch (shiftNode.getOperation()) {
             case TokenStream.LSH:
                 return mapBinaryOperation(JsBinaryOperator.SHL, shiftNode);
 
@@ -868,17 +853,12 @@ public class JsAstMapper {
 
             default:
                 throw createParserException("Unknown equality operator variant: "
-                                            + shiftNode.getIntDatum(), shiftNode);
+                                            + shiftNode.getOperation(), shiftNode);
         }
     }
 
     private JsStatement mapStatement(Node nodeStmt) throws JsParserException {
         JsNode unknown = map(nodeStmt);
-
-        if (unknown instanceof HasMetadata) {
-            HasMetadata metadataContainer = (HasMetadata) unknown;
-            metadataContainer.setData("line", nodeStmt.getLineno());
-        }
 
         if (unknown != null) {
             if (unknown instanceof JsStatement) {
@@ -1042,7 +1022,7 @@ public class JsAstMapper {
     }
 
     private JsExpression mapUnaryVariant(Node unOp) throws JsParserException {
-        switch (unOp.getIntDatum()) {
+        switch (unOp.getOperation()) {
             case TokenStream.SUB:
                 return mapPrefixOperation(JsUnaryOperator.NEG, unOp);
 
@@ -1069,7 +1049,7 @@ public class JsAstMapper {
 
             default:
                 throw createParserException(
-                        "Unknown unary operator variant: " + unOp.getIntDatum(), unOp);
+                        "Unknown unary operator variant: " + unOp.getOperation(), unOp);
         }
     }
 
